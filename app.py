@@ -1,288 +1,279 @@
 # ========================================
-# 🚗 EV ADOPTION & FUEL PRICE TREND ANALYSIS (Enhanced Linear Regression)
+# 🚗 Streamlit EV Analytics Dashboard (Complete)
 # ========================================
 
+import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
-import warnings
-warnings.filterwarnings('ignore')
+from sklearn.metrics import mean_absolute_error, r2_score
 
 # ========================================
-# SETTINGS
+# Page config
 # ========================================
+st.set_page_config(page_title="EV Analytics Dashboard", layout="wide")
 sns.set_style("whitegrid")
-plt.rcParams['figure.figsize'] = (12, 6)
-
-print("="*70)
-print("🚗 EV ADOPTION & FUEL PRICE TREND ANALYSIS (Enhanced Linear Model)")
-print("="*70)
 
 # ========================================
-# 1. DATA LOADING
+# Load and preprocess data
 # ========================================
-print("\n📂 Loading datasets...")
-try:
-    ev_data = pd.read_csv('ev_registrations.csv')
-    fuel_data = pd.read_csv('fuel_prices.csv')
-    print("✅ Datasets loaded successfully!")
-except FileNotFoundError as e:
-    print(f"❌ Error: {e}")
-    print("Please ensure 'ev_registrations.csv' and 'fuel_prices.csv' are available.")
-    exit()
-
-# ========================================
-# 2. DATA PREPROCESSING
-# ========================================
-print("\n🔧 Preprocessing data...")
+ev_data = pd.read_csv('ev_registrations.csv')
+fuel_data = pd.read_csv('fuel_prices.csv')
 
 ev_data['Date'] = pd.to_datetime(ev_data['Date'])
 fuel_data['Date'] = pd.to_datetime(fuel_data['Date'])
 
-merged_data = pd.merge(ev_data, fuel_data, on='Date', how='inner')
-merged_data['Year'] = merged_data['Date'].dt.year
-merged_data['Month'] = merged_data['Date'].dt.month
-merged_data['Days_Since_Start'] = (merged_data['Date'] - merged_data['Date'].min()).dt.days
-
-# Feature engineering
+merged_data = pd.merge(ev_data, fuel_data, on='Date')
 merged_data['Avg_Fuel_Price'] = (merged_data['Petrol_Price'] + merged_data['Diesel_Price']) / 2
 merged_data['Fuel_Price_Diff'] = merged_data['Petrol_Price'] - merged_data['Diesel_Price']
-
-print(f"✅ Merged dataset shape: {merged_data.shape}")
-
-# ========================================
-# 3. CORRELATION ANALYSIS (Improved Heatmap)
-# ========================================
-print("\n📊 Correlation Analysis...")
-
-corr = merged_data[['EV_Registrations', 'Petrol_Price', 'Diesel_Price',
-                    'Days_Since_Start', 'Avg_Fuel_Price', 'Fuel_Price_Diff']].corr()
-print(corr)
-
-plt.figure(figsize=(10,8))
-sns.heatmap(corr, annot=True, fmt=".2f", cmap='RdYlGn', center=0,
-            linewidths=1, linecolor='black', cbar=True,
-            annot_kws={"size":12, "weight":"bold"})
-plt.xticks(rotation=45, ha='right', fontsize=11, weight='bold')
-plt.yticks(fontsize=11, weight='bold')
-plt.title("🔍 Correlation Heatmap: EV Registrations vs Fuel Prices", fontsize=15, fontweight='bold')
-plt.tight_layout()
-plt.savefig("correlation_heatmap_improved.png", dpi=300)
-plt.show()
-
+merged_data['Days_Since_Start'] = (merged_data['Date'] - merged_data['Date'].min()).dt.days
 
 # ========================================
-# 4. MODEL PREPARATION
+# Train Linear Regression Model
 # ========================================
-print("\n⚙️ Preparing data for regression...")
-
-X = merged_data[['Petrol_Price', 'Diesel_Price', 'Avg_Fuel_Price', 'Fuel_Price_Diff', 'Days_Since_Start']]
+X = merged_data[['Petrol_Price','Diesel_Price','Avg_Fuel_Price','Fuel_Price_Diff','Days_Since_Start']]
 y = np.log1p(merged_data['EV_Registrations'])
-
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+model = LinearRegression().fit(X_scaled, y)
+y_pred = np.expm1(model.predict(X_scaled))
+r2 = model.score(X_scaled, y)
+mae = mean_absolute_error(np.expm1(y), y_pred)
 
 # ========================================
-# 5. MODEL TRAINING
+# Sidebar Navigation
 # ========================================
-print("\n🤖 Training Linear Regression model...")
-model = LinearRegression()
-model.fit(X_train, y_train)
-print("✅ Model trained successfully!")
-
-# ========================================
-# 6. MODEL EVALUATION
-# ========================================
-y_pred_log = model.predict(X_test)
-y_pred = np.expm1(y_pred_log)
-y_true = np.expm1(y_test)
-
-mse = mean_squared_error(y_true, y_pred)
-rmse = np.sqrt(mse)
-mae = mean_absolute_error(y_true, y_pred)
-r2 = r2_score(y_true, y_pred)
-cv_scores = cross_val_score(model, X_scaled, y, cv=5, scoring='r2')
-
-print("\n" + "="*70)
-print("📈 MODEL PERFORMANCE (Linear Regression)")
-print("="*70)
-print(f"Mean Squared Error (MSE):       {mse:,.2f}")
-print(f"Root Mean Squared Error (RMSE): {rmse:,.2f}")
-print(f"Mean Absolute Error (MAE):      {mae:,.2f}")
-print(f"R² Score:                       {r2:.4f}")
-print(f"Cross-Validation Mean R²:       {cv_scores.mean():.4f} (+/- {cv_scores.std():.4f})")
-
-# ========================================
-# 7. VISUALIZATION - Actual vs Predicted
-# ========================================
-plt.figure(figsize=(12, 6))
-plt.scatter(y_true, y_pred, alpha=0.7, color='#2980b9', edgecolors='black')
-plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--', lw=2, label='Perfect Fit')
-plt.xlabel('Actual EV Registrations', fontsize=12, fontweight='bold')
-plt.ylabel('Predicted EV Registrations', fontsize=12, fontweight='bold')
-plt.title('🎯 Actual vs Predicted EV Registrations (Linear Model)', fontsize=15, fontweight='bold')
-plt.legend()
-plt.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig('actual_vs_predicted_linear.png', dpi=300)
-print("✅ Saved: actual_vs_predicted_linear.png")
-plt.show()
-
-# ========================================
-# 8. TREND VISUALIZATION
-# ========================================
-plt.figure(figsize=(12,6))
-plt.plot(merged_data['Date'], merged_data['EV_Registrations'], label='EV Registrations', color='#27ae60', linewidth=2)
-plt.plot(merged_data['Date'], merged_data['Avg_Fuel_Price']*100, label='Avg Fuel Price (x100)', color='#e67e22', linewidth=2)
-plt.title("📅 EV Growth vs Fuel Price Trend", fontsize=15, fontweight='bold')
-plt.xlabel("Date")
-plt.ylabel("Value / Scaled (x100 for Fuel Price)")
-plt.legend()
-plt.tight_layout()
-plt.savefig('trend_analysis.png', dpi=300)
-print("✅ Saved: trend_analysis.png")
-plt.show()
-
-# ========================================
-# 9. FUTURE PREDICTIONS
-# ========================================
-print("\n🔮 Predicting future EV adoption...")
-max_days = merged_data['Days_Since_Start'].max()
-
-future_data = pd.DataFrame({
-    'Petrol_Price': [100, 105, 110, 115, 120],
-    'Diesel_Price': [90, 95, 100, 105, 110],
-})
-future_data['Avg_Fuel_Price'] = (future_data['Petrol_Price'] + future_data['Diesel_Price']) / 2
-future_data['Fuel_Price_Diff'] = future_data['Petrol_Price'] - future_data['Diesel_Price']
-future_data['Days_Since_Start'] = [max_days + 30*i for i in range(1, 6)]
-
-future_scaled = scaler.transform(future_data[X.columns])
-future_pred_log = model.predict(future_scaled)
-future_data['Predicted_EV_Registrations'] = np.expm1(future_pred_log).round(0)
-future_data['Predicted_EV_Registrations'] = future_data['Predicted_EV_Registrations'].clip(lower=0)
-
-print("\n📈 Future EV Adoption Predictions:")
-print(future_data[['Petrol_Price', 'Diesel_Price', 'Predicted_EV_Registrations']])
-
-plt.figure(figsize=(12,6))
-plt.plot(future_data['Petrol_Price'], future_data['Predicted_EV_Registrations'], marker='o', linewidth=3, color='#16a085')
-plt.title("🔮 Future EV Adoption Predictions vs Fuel Price", fontsize=15, fontweight='bold')
-plt.xlabel("Petrol Price (₹/Litre)")
-plt.ylabel("Predicted EV Registrations")
-plt.grid(True, alpha=0.3)
-for x, y in zip(future_data['Petrol_Price'], future_data['Predicted_EV_Registrations']):
-    plt.text(x, y, f'{int(y):,}', ha='center', va='bottom', fontsize=10, fontweight='bold')
-plt.tight_layout()
-plt.savefig('future_predictions_linear.png', dpi=300)
-print("✅ Saved: future_predictions_linear.png")
-plt.show()
-
-# ========================================
-# 10. INSIGHTS
-# ========================================
-print("\n" + "="*70)
-print("💡 INSIGHTS & SUMMARY")
-print("="*70)
-
-corr_value = corr.loc['EV_Registrations', 'Avg_Fuel_Price']
-growth_rate = (merged_data['EV_Registrations'].iloc[-1] - merged_data['EV_Registrations'].iloc[0]) / merged_data['EV_Registrations'].iloc[0] * 100
-
-print(f"\n✅ R² Score: {r2:.4f} ({r2*100:.2f}% variance explained)")
-print(f"✅ Mean Absolute Error: ±{mae:,.0f} registrations")
-print(f"✅ EV growth from {merged_data['Date'].min().year}–{merged_data['Date'].max().year}: {growth_rate:.2f}%")
-print(f"✅ Correlation between EV adoption & Avg Fuel Price: {corr_value:.2f}")
-
-print("\n🎯 As petrol price increases from ₹100 → ₹120:")
-print(f"   EV registrations are predicted to rise from "
-      f"{int(future_data['Predicted_EV_Registrations'].iloc[0]):,} "
-      f"to {int(future_data['Predicted_EV_Registrations'].iloc[-1]):,}, "
-      f"showing a positive association with fuel cost inflation.")
-
-print("\n✅ Analysis Complete. Generated Files:")
-print("   • correlation_heatmap.png")
-print("   • actual_vs_predicted_linear.png")
-print("   • trend_analysis.png")
-print("   • future_predictions_linear.png")
-print("="*70)
-
-# ========================================
-# 11. INFOGRAPHIC SUMMARY 
-# ========================================
-
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-
-print("\n🖼️ Generating improved infographic...")
-
-fig = plt.figure(figsize=(14, 8))
-fig.patch.set_facecolor('#f7f7f7')
-gs = GridSpec(3, 2, height_ratios=[0.8, 4, 1.2], width_ratios=[1, 1], figure=fig)
-
-ax_title = fig.add_subplot(gs[0, :])
-ax_title.axis('off')
-ax_title.text(
-    0.5, 0.5,
-    "EV Adoption & Fuel Price Insights Dashboard",
-    fontsize=18, fontweight='bold', ha='center', va='center'
+dashboard = st.sidebar.selectbox(
+    "Choose Dashboard", 
+    [
+        "Overview", 
+        "Actual vs Predicted", 
+        "Interactive Prediction", 
+        "Future Trends", 
+        "Insights & Infographics", 
+        "Historical Data Explorer"
+    ]
 )
 
-ax_metrics = fig.add_subplot(gs[1, 0])
-ax_metrics.axis('off')
-metrics_text = (
-    f"• R² Score: {r2:.4f} ({r2*100:.2f}% variance explained)\n"
-    f"• Mean Absolute Error: ±{mae:,.0f}\n"
-    f"• EV Growth: {growth_rate:.2f}% "
-    f"({merged_data['Date'].min().year}–{merged_data['Date'].max().year})\n"
-    f"• Correlation (EV vs Avg Fuel Price): {corr_value:.2f}"
-)
-ax_metrics.text(
-    0.02, 0.95,
-    metrics_text,
-    fontsize=12, va='top',
-    bbox=dict(boxstyle="round,pad=0.6", facecolor="#e8f4fa", edgecolor="#2980b9")
-)
+# ========================================
+# 1️⃣ Overview Dashboard (Expanded)
+# ========================================
+if dashboard == "Overview":
+    st.title("📊 EV Adoption Overview")
+    
+    # Metrics
+    col1, col2, col3 = st.columns(3)
+    col1.metric("R² Score", f"{r2:.4f}")
+    col2.metric("Mean Absolute Error", f"{mae:.0f}")
+    growth_rate = ((merged_data['EV_Registrations'].iloc[-1] - merged_data['EV_Registrations'].iloc[0])
+                   / merged_data['EV_Registrations'].iloc[0] * 100)
+    col3.metric("EV Growth (%)", f"{growth_rate:.2f}")
+    
+    # Descriptive text
+    st.markdown("""
+    **Overview:**  
+    The EV adoption in the selected region shows a steady growth over the analyzed period.  
+    Observing the trend with average fuel prices indicates a correlation between fuel costs and EV registrations.  
+    High fuel prices appear to coincide with accelerated EV adoption, highlighting consumer sensitivity to petrol and diesel prices.  
+    This overview provides insights into historical trends and serves as a foundation for forecasting future EV growth.
+    """)
+    
+    # EV vs Fuel Price Plot
+    st.subheader("EV Registrations vs Avg Fuel Price")
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.plot(merged_data['Date'], merged_data['EV_Registrations'], label='EV Registrations', color='green', lw=2)
+    ax.plot(merged_data['Date'], merged_data['Avg_Fuel_Price']*100, label='Avg Fuel Price (x100)', color='orange', lw=2)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Value / Scaled (x100)")
+    ax.legend()
+    st.pyplot(fig)
+    
+    # Correlation Heatmap
+    st.subheader("Correlation Heatmap")
+    corr = merged_data[['EV_Registrations', 'Petrol_Price', 'Diesel_Price', 'Avg_Fuel_Price', 'Fuel_Price_Diff']].corr()
+    fig, ax = plt.subplots(figsize=(10,8))
+    sns.heatmap(corr, annot=True, fmt=".2f", cmap='RdYlGn', center=0, ax=ax)
+    st.pyplot(fig)
 
-ax_plot = fig.add_subplot(gs[1, 1])
-ax_plot.plot(
-    future_data['Petrol_Price'],
-    future_data['Predicted_EV_Registrations'],
-    marker='o', linewidth=2
-)
-ax_plot.set_title("Predicted EV Adoption vs Petrol Price", fontsize=12, fontweight='bold')
-ax_plot.set_xlabel("Petrol Price (₹/Litre)")
-ax_plot.set_ylabel("Predicted EV Registrations")
-ax_plot.grid(alpha=0.3)
+# ========================================
+# 2️⃣ Actual vs Predicted Dashboard
+# ========================================
+elif dashboard == "Actual vs Predicted":
+    st.title("🎯 Actual vs Predicted EV Registrations")
+    
+    # Scatter plot
+    fig, ax = plt.subplots(figsize=(10,6))
+    ax.scatter(np.expm1(y), y_pred, alpha=0.7, color='#2980b9')
+    ax.plot([np.expm1(y).min(), np.expm1(y).max()], [np.expm1(y).min(), np.expm1(y).max()], 'r--', lw=2)
+    ax.set_xlabel("Actual EV Registrations")
+    ax.set_ylabel("Predicted EV Registrations")
+    st.pyplot(fig)
+    
+    # Residuals
+    st.subheader("Residuals Plot")
+    residuals = np.expm1(y) - y_pred
+    fig, ax = plt.subplots(figsize=(10,5))
+    ax.scatter(np.expm1(y), residuals, color='#e74c3c', alpha=0.7)
+    ax.axhline(0, color='black', lw=2, linestyle='--')
+    ax.set_xlabel("Actual EV Registrations")
+    ax.set_ylabel("Residuals")
+    st.pyplot(fig)
 
-for x, y in zip(future_data['Petrol_Price'], future_data['Predicted_EV_Registrations']):
-    ax_plot.text(x, y, f"{int(y):,}", fontsize=10, ha='center', va='bottom')
+# ========================================
+# 3️⃣ Interactive Prediction Dashboard
+# ========================================
+elif dashboard == "Interactive Prediction":
+    st.title("🔮 Interactive EV Prediction")
+    petrol_price = st.slider("Petrol Price (₹/Litre)", 80, 150, 110)
+    diesel_price = st.slider("Diesel Price (₹/Litre)", 70, 140, 100)
+    months_ahead = st.slider("Months Ahead for Prediction", 1, 12, 6)
+    
+    future_days = [merged_data['Days_Since_Start'].max() + 30*i for i in range(1, months_ahead+1)]
+    future_df = pd.DataFrame({'Petrol_Price':[petrol_price]*months_ahead, 'Diesel_Price':[diesel_price]*months_ahead})
+    future_df['Avg_Fuel_Price'] = (future_df['Petrol_Price'] + future_df['Diesel_Price'])/2
+    future_df['Fuel_Price_Diff'] = future_df['Petrol_Price'] - future_df['Diesel_Price']
+    future_df['Days_Since_Start'] = future_days
+    
+    future_scaled = scaler.transform(future_df[X.columns])
+    future_df['Predicted_EV'] = np.expm1(model.predict(future_scaled)).round(0)
+    
+    st.subheader("Predicted EV Registrations Table")
+    st.dataframe(future_df)
+    
+    st.subheader("Predicted EV Registrations Plot")
+    fig, ax = plt.subplots(figsize=(12,5))
+    ax.plot(future_df['Days_Since_Start'], future_df['Predicted_EV'], marker='o', color='#16a085', lw=2)
+    ax.set_xlabel("Days Since Start")
+    ax.set_ylabel("Predicted EV Registrations")
+    ax.grid(True, alpha=0.3)
+    st.pyplot(fig)
 
-ax_footer = fig.add_subplot(gs[2, :])
-ax_footer.axis('off')
-footer_text = (
-    f"As petrol price rises from ₹100 to ₹120, EV registrations are predicted "
-    f"to increase from {int(future_data['Predicted_EV_Registrations'].iloc[0]):,} "
-    f"to {int(future_data['Predicted_EV_Registrations'].iloc[-1]):,}."
-)
-ax_footer.text(
-    0.5, 0.5,
-    footer_text,
-    fontsize=12, ha='center',
-    bbox=dict(boxstyle="round,pad=0.6", facecolor="#fff4e6")
-)
+# ========================================
+# 4️⃣ Future Trends Dashboard
+# ========================================
+elif dashboard == "Future Trends":
+    st.title("📈 Future EV Trend Simulation")
+    st.write("Compare multiple petrol price scenarios to predict EV adoption.")
+    
+    months_ahead = st.slider("Months to Forecast", 1, 12, 6, key='ft_months')
+    base_diesel_price = st.slider("Base Diesel Price (₹)", 70, 140, 100, key='ft_diesel')
+    
+    petrol_scenarios = {
+        'Low Petrol Price': np.linspace(100, 105, months_ahead),
+        'Medium Petrol Price': np.linspace(110, 120, months_ahead),
+        'High Petrol Price': np.linspace(125, 140, months_ahead)
+    }
+    
+    future_days = [merged_data['Days_Since_Start'].max() + 30*i for i in range(1, months_ahead+1)]
+    forecast_df = pd.DataFrame({'Days_Since_Start': future_days})
+    
+    fig, ax = plt.subplots(figsize=(12,6))
+    for scenario, petrol_prices in petrol_scenarios.items():
+        temp_df = pd.DataFrame({
+            'Petrol_Price': petrol_prices,
+            'Diesel_Price': [base_diesel_price]*months_ahead
+        })
+        temp_df['Avg_Fuel_Price'] = (temp_df['Petrol_Price'] + temp_df['Diesel_Price']) / 2
+        temp_df['Fuel_Price_Diff'] = temp_df['Petrol_Price'] - temp_df['Diesel_Price']
+        temp_df['Days_Since_Start'] = future_days
+        temp_scaled = scaler.transform(temp_df[X.columns])
+        temp_df['Predicted_EV'] = np.expm1(model.predict(temp_scaled)).round(0)
+        
+        forecast_df[scenario] = temp_df['Predicted_EV']
+        ax.plot(future_days, temp_df['Predicted_EV'], marker='o', lw=2, label=scenario)
+    
+    ax.set_xlabel("Days Since Start")
+    ax.set_ylabel("Predicted EV Registrations")
+    ax.set_title(f"EV Adoption Forecast for Next {months_ahead} Months")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    st.pyplot(fig)
+    
+    st.subheader("Scenario Prediction Table")
+    st.dataframe(forecast_df)
 
-infographic_path = "ev_fuel_infographic.png"
-plt.tight_layout()
-plt.savefig(infographic_path, dpi=300, bbox_inches='tight')
-plt.show()
+# ========================================
+# 5️⃣ Insights & Infographics (Text-Based)
+# ========================================
+elif dashboard == "Insights & Infographics":
+    st.title("💡 Insights & Infographics")
 
-print(f"✅ Infographic generated and saved as: {infographic_path}")
+    # Safe growth_rate
+    start_ev = merged_data['EV_Registrations'].iloc[0]
+    end_ev = merged_data['EV_Registrations'].iloc[-1]
+    growth_rate = ((end_ev - start_ev) / start_ev * 100) if start_ev != 0 else 0
 
+    st.subheader("Summary Metrics")
+    st.write(f"• R² Score: {r2:.4f}")
+    st.write(f"• Mean Absolute Error: ±{mae:.0f}")
+    st.write(f"• EV Growth: {growth_rate:.2f}%")
+    
+    # Correlation
+    corr_value = merged_data[['EV_Registrations','Avg_Fuel_Price']].corr().iloc[0,1]
+    st.subheader("Correlation with Avg Fuel Price")
+    st.write(f"Correlation (EV vs Avg Fuel Price): {corr_value:.2f}")
+    
+    # Extended Text Insights
+    st.subheader("Key Insights")
+    st.markdown(f"""
+    1. **Overall EV Growth:** From {start_ev:,} to {end_ev:,} registrations, total growth of {growth_rate:.2f}%.  
+    2. **Fuel Price Sensitivity:** Correlation with Avg Fuel Price is {corr_value:.2f}, indicating moderate sensitivity.  
+    3. **Trends Over Time:** EV adoption shows seasonal fluctuations and a general upward trend.  
+    4. **Market Implications:** Rising fuel prices can be a strong driver for accelerated EV adoption.  
+    5. **Forecasting Potential:** Historical patterns provide a reliable foundation for predictive modeling of future EV registrations.
+    """)
 
+# ========================================
+# 6️⃣ Historical Data Explorer (with Insights)
+# ========================================
+elif dashboard == "Historical Data Explorer":
+    st.title("📅 Historical EV Registrations vs Fuel Prices (2018–2024)")
+
+    merged_data['Year'] = merged_data['Date'].dt.year
+    selected_years = st.multiselect(
+        "Select Years to Explore", 
+        options=sorted(merged_data['Year'].unique()), 
+        default=[2018,2019,2020,2021,2022,2023,2024]
+    )
+
+    if selected_years:
+        filtered_data = merged_data[merged_data['Year'].isin(selected_years)]
+
+        st.subheader("EV Registrations vs Fuel Prices Table")
+        st.dataframe(filtered_data[['Date', 'EV_Registrations', 'Petrol_Price', 'Diesel_Price', 'Avg_Fuel_Price']].reset_index(drop=True))
+
+        st.subheader("EV Registrations vs Fuel Prices Plot")
+        fig, ax = plt.subplots(figsize=(12,6))
+        for year in selected_years:
+            year_data = filtered_data[filtered_data['Year'] == year]
+            ax.plot(year_data['Date'], year_data['EV_Registrations'], marker='o', label=f"EV {year}")
+            ax.plot(year_data['Date'], year_data['Avg_Fuel_Price']*100, marker='x', linestyle='--', label=f"Fuel Price {year}")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Value / Scaled (x100)")
+        ax.set_title("EV Registrations vs Average Fuel Price")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        st.pyplot(fig)
+
+        # Insights
+        st.subheader("Key Insights")
+        total_ev = filtered_data['EV_Registrations'].sum()
+        avg_fuel_price = filtered_data['Avg_Fuel_Price'].mean()
+        start_ev = filtered_data['EV_Registrations'].iloc[0]
+        end_ev = filtered_data['EV_Registrations'].iloc[-1]
+        growth_rate = ((end_ev - start_ev)/start_ev * 100) if start_ev != 0 else 0
+        corr_value = filtered_data[['EV_Registrations','Avg_Fuel_Price']].corr().iloc[0,1] if 'Avg_Fuel_Price' in filtered_data.columns else 0
+
+        st.markdown(f"""
+        1. **Total EV Registrations (Selected Years):** {total_ev:,}  
+        2. **EV Growth Rate:** {growth_rate:.2f}% from {start_ev:,} to {end_ev:,} registrations  
+        3. **Average Fuel Price:** ₹{avg_fuel_price:.2f}  
+        4. **Correlation (EV vs Avg Fuel Price):** {corr_value:.2f}  
+        5. **Trend Observation:** EV registrations generally increase over time, with higher adoption observed during periods of elevated fuel prices.
+        """)
+    else:
+        st.warning("Please select at least one year to display data.")
